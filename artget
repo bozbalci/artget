@@ -75,23 +75,24 @@ if __name__ == '__main__':
          description='Fetch album arts from Last.fm, has MPD support.',
          epilog='If --artist and --album are specified, it will take'
             ' priority over the currently playing song.')
-   parser.add_argument('--size', type=int, default=3,
+   parser.add_argument('-s', '--size', type=int, default=3,
          help='between 1 and 5, pick size for image file (3)')
-   parser.add_argument('--output', type=str, default='cover.jpg',
+   parser.add_argument('-o', '--output', type=str, default='cover.jpg',
          help='filename to save the downloaded album art')
-   parser.add_argument('--artist', type=str, help='Look for this artist', default='')
-   parser.add_argument('--album', type=str, help='Look for this album', default='')
-   parser.add_argument('--hostname', type=str, default='localhost',
+   parser.add_argument('-a', '--artist', type=str, help='Look for this artist',
+         default='')
+   parser.add_argument('-b', '--album', type=str, help='Look for this album', default='')
+   parser.add_argument('-n', '--hostname', type=str, default='localhost',
          help='specify hostname for the MPD server (localhost)')
-   parser.add_argument('--port', type=int, default=6600,
+   parser.add_argument('-p', '--port', type=int, default=6600,
          help='specify port for the MPD server (6600)')
-   parser.add_argument('--root', type=str, default="~/music/",
+   parser.add_argument('-r', '--root', type=str, default="~/music/",
          help='MPD music directory (useful with --to-music-dir')
-   parser.add_argument('--no-autocorrect', action='store_false', dest='autocorrect',
+   parser.add_argument('-N', '--no-autocorrect', action='store_false', dest='autocorrect',
          help='do not use autocorrect by Last.fm')
-   parser.add_argument('--album-artist', action='store_true', dest='albumartist',
+   parser.add_argument('-A', '--album-artist', action='store_true', dest='albumartist',
          help='prefer albumartist tag on the current playing album')
-   parser.add_argument('--to-music-dir', action='store_true', dest='tomusicdir',
+   parser.add_argument('-t', '--to-music-dir', action='store_true', dest='tomusicdir',
          help='save album art to the music directory (only if it exists)')
    args = parser.parse_args()
    

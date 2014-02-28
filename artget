@@ -28,7 +28,6 @@
 import mpd
 import requests
 import argparse
-import bisect
 import sys
 
 api = "http://ws.audioscrobbler.com"
@@ -45,11 +44,21 @@ def fetch_art(artist, album, size, autocorrect):
 
    r = requests.get(api + "/2.0/?method=album.getinfo", params=payload)
    images = r.json()['album']['image']
-   count = len(images)
-   intvals = range(1, count + 1)
-   i = bisect.bisect_right(intvals, size)
+   
+   if size == 1:
+      url = images[0]['#text']
+   if size == 2:
+      url = images[1]['#text']
+   if size == 3:
+      url = images[2]['#text']
+   if size == 4:
+      url = images[-2]['#text']
+   if size == 5:
+      url = images[-1]['#text']
+   else:
+      print "Size must be between 1 and 5."
+      sys.exit(1)
 
-   url = images[intvals[i - 1 : i + 1][0]]['#text']
    try:
       r = requests.get(url)
    except:

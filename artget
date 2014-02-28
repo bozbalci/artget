@@ -1,0 +1,95 @@
+#!/usr/local/bin/python
+# -*- coding: utf-8 -*-
+
+import mpd
+import requests
+import argparse
+import bisect
+import sys
+
+api = "http://ws.audioscrobbler.com"
+key = "a76e4f3f6a9e81f45a943509437a125f"
+
+def fetch_art(artist, album, size, autocorrect):
+   payload = {
+      'api_key': key,
+      'artist' : artist,
+      'album' : album,
+      'autocorrect' : int(autocorrect),
+      'format' : 'json'
+   }
+
+   r = requests.get(api + "/2.0/?method=album.getinfo", params=payload)
+   images = r.json()['album']['image']
+   count = len(images)
+   intvals = range(1, count + 1)
+   i = bisect.bisect_right(intvals, size)
+
+   url = images[intvals[i - 1 : i + 1][0]]['#text']
+   try:
+      r = requests.get(url)
+   except:
+      print "There was an error retrieving album art from Last.fm."
+   return r.content
+
+def download_art(image, path):
+   with open(path, 'wb') as fd:
+      fd.write(image)
+
+if __name__ == '__main__':
+   parser = argparse.ArgumentParser(prog='artget',
+         description='Fetch album arts from Last.fm, has MPD support.',
+         epilog='If --artist and --album are specified, it will take'
+            ' priority over the currently playing song.')
+   parser.add_argument('--size', type=int, default=3,
+         help='between 1 and 5, pick size for image file (3)')
+   parser.add_argument('--output', type=str, default='cover.jpg',
+         help='filename to save the downloaded album art')
+   parser.add_argument('--artist', type=str, help='Look for this artist', default='')
+   parser.add_argument('--album', type=str, help='Look for this album', default='')
+   parser.add_argument('--hostname', type=str, default='localhost',
+         help='specify hostname for the MPD server (localhost)')
+   parser.add_argument('--port', type=int, default=6600,
+         help='specify port for the MPD server (6600)')
+   parser.add_argument('--no-autocorrect', action='store_false', dest='autocorrect',
+         help='do not use autocorrect by Last.fm')
+   parser.add_argument('--album-artist', action='store_true', dest='albumartist',
+         help='prefer albumartist tag on the current playing album')
+   args = parser.parse_args()
+   
+   client = mpd.MPDClient(use_unicode=True)
+   try:
+      client.connect(args.hostname, args.port)
+   except:
+      print "Could not connect to the MPD server."
+      sys.exit(1)
+
+   artist, album, songdir = (None, None, None)
+
+   if args.artist != '':
+      if args.album == '':
+         print "If you specify --artist, you must also specify --album!"
+         sys.exit(1)
+      else:
+         artist = args.artist
+         album = args.album
+   if args.album != '':
+      if args.artist == '':
+         print "If you specify --album, you must also specify --artist!"
+         sys.exit(1)
+      else:
+         artist = args.artist
+         album = args.album
+   if args.artist == '' and args.album == '':
+      song = client.currentsong()
+      if song == {}:
+         print "No song is playing at the moment."
+         sys.exit(1)
+      artist = song['artist']
+      if args.albumartist:
+         artist = song['artist']
+      album = song['album']
+      # songdir = song['file']
+
+   image = fetch_art(artist, album, args.size, args.autocorrect)
+   download_art(image, args.output)

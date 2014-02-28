@@ -55,7 +55,7 @@ def fetch_art(artist, album, size, autocorrect):
       url = images[-2]['#text']
    if size == 5:
       url = images[-1]['#text']
-   else:
+   if not size in range(1, 6):
       print "Size must be between 1 and 5."
       sys.exit(1)
 

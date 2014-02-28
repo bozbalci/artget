@@ -29,6 +29,7 @@ import mpd
 import requests
 import argparse
 import sys
+import os
 
 api = "http://ws.audioscrobbler.com"
 key = "a76e4f3f6a9e81f45a943509437a125f"
@@ -84,10 +85,14 @@ if __name__ == '__main__':
          help='specify hostname for the MPD server (localhost)')
    parser.add_argument('--port', type=int, default=6600,
          help='specify port for the MPD server (6600)')
+   parser.add_argument('--root', type=str, default="~/music/",
+         help='MPD music directory (useful with --to-music-dir')
    parser.add_argument('--no-autocorrect', action='store_false', dest='autocorrect',
          help='do not use autocorrect by Last.fm')
    parser.add_argument('--album-artist', action='store_true', dest='albumartist',
          help='prefer albumartist tag on the current playing album')
+   parser.add_argument('--to-music-dir', action='store_true', dest='tomusicdir',
+         help='save album art to the music directory (only if it exists)')
    args = parser.parse_args()
    
    client = mpd.MPDClient(use_unicode=True)
@@ -98,6 +103,7 @@ if __name__ == '__main__':
       sys.exit(1)
 
    artist, album, songdir = (None, None, None)
+   output = args.output # output is to be changed soon
 
    if args.artist != '':
       if args.album == '':
@@ -106,6 +112,9 @@ if __name__ == '__main__':
       else:
          artist = args.artist
          album = args.album
+         if args.tomusicdir:
+            output = os.path.join(os.path.expanduser(args.root),
+                  artist, album, args.output)
    if args.album != '':
       if args.artist == '':
          print "If you specify --album, you must also specify --artist!"
@@ -122,7 +131,9 @@ if __name__ == '__main__':
       if args.albumartist:
          artist = song['artist']
       album = song['album']
-      # songdir = song['file']
+      if args.tomusicdir:
+         output = os.path.join(os.path.expanduser(args.root),
+               os.path.dirname(song['file']), args.output)
 
    image = fetch_art(artist, album, args.size, args.autocorrect)
-   download_art(image, args.output)
+   download_art(image, output)

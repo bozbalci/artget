@@ -31,3 +31,8 @@ Examples
 
     artget --artist "Genesis" --album "Trespass" --size 5
     artget --port 3490 --no-autocorrect --album-artist
+
+Known Issues
+============
+
+`--size 5` sometimes raises IndexError

@@ -1,6 +1,5 @@
 #!/usr/local/bin/python
 # -*- coding: utf-8 -*-
-
 # Copyright (c) 2014, Berk Özbalcı
 # All rights reserved.
 # 
@@ -35,6 +34,10 @@ api = "http://ws.audioscrobbler.com"
 key = "a76e4f3f6a9e81f45a943509437a125f"
 
 def fetch_art(artist, album, size, autocorrect):
+   if not size in range(1, 6):
+      print "Size must be between 1 and 5."
+      sys.exit(1)
+
    payload = {
       'api_key': key,
       'artist' : artist,
@@ -42,33 +45,59 @@ def fetch_art(artist, album, size, autocorrect):
       'autocorrect' : int(autocorrect),
       'format' : 'json'
    }
-
-   r = requests.get(api + "/2.0/?method=album.getinfo", params=payload)
-   images = r.json()['album']['image']
    
-   if size == 1:
-      url = images[0]['#text']
-   if size == 2:
-      url = images[1]['#text']
-   if size == 3:
-      url = images[2]['#text']
-   if size == 4:
-      url = images[-2]['#text']
-   if size == 5:
-      url = images[-1]['#text']
-   if not size in range(1, 6):
-      print "Size must be between 1 and 5."
+   try:
+      r = requests.get(api + "/2.0/?method=album.getinfo", params=payload)
+   except (requests.exceptions.ConnectionError,
+         requests.exceptions.HTTPError,
+         requests.exceptions.Timeout):
+      print "Couldn't connect to Last.fm."
+      sys.exit(1)
+
+   data = r.json()
+   images = None
+   url = None
+
+   try:
+      data['album']
+   except KeyError:
+      print "This album doesn't seem to have a Last.fm page."
+      sys.exit(1)
+
+   try:
+      images = data['album']['image']
+   except KeyError:
+      print "This album doesn't seem to have art on Last.fm."
+      sys.exit(1)
+
+   try:
+      url = images[size - 1]['#text']
+   except KeyError:
+      try:
+         url = images[size - 2]['#text']
+      except KeyError:
+         print "No album art of size " + size + " or " + size - 1 + "."
+         sys.exit(1)
+
+   if url == '':
+      print "This album doesn't seem to have art on Last.fm."
       sys.exit(1)
 
    try:
       r = requests.get(url)
-   except:
+   except (requests.exceptions.ConnectionError,
+         requests.exceptions.HTTPError,
+         requests.exceptions.Timeout):
       print "There was an error retrieving album art from Last.fm."
    return r.content
 
 def download_art(image, path):
-   with open(path, 'wb') as fd:
-      fd.write(image)
+   try:
+      with open(path, 'wb') as fd:
+         fd.write(image)
+   except IOError:
+      print "Couldn't save to file: " + path
+      sys.exit(1)
 
 if __name__ == '__main__':
    parser = argparse.ArgumentParser(prog='artget',

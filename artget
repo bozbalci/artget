@@ -24,7 +24,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import mpd
+from mpd import MPDClient, MPDError, CommandError
 import requests
 import argparse
 import sys
@@ -33,90 +33,162 @@ import os
 api = "http://ws.audioscrobbler.com"
 key = "a76e4f3f6a9e81f45a943509437a125f"
 
-def fetch_art(artist, album, size, autocorrect):
-   if not size in range(1, 6):
-      print "Size must be between 1 and 5."
-      sys.exit(1)
+class ArtgetError(Exception):
+   """ Fatal error in artget. """
 
-   payload = {
-      'api_key': key,
-      'artist' : artist,
-      'album' : album,
-      'autocorrect' : int(autocorrect),
-      'format' : 'json'
-   }
-   
-   try:
-      r = requests.get(api + "/2.0/?method=album.getinfo", params=payload)
-   except (requests.exceptions.ConnectionError,
-         requests.exceptions.HTTPError,
-         requests.exceptions.Timeout):
-      print "Couldn't connect to Last.fm."
-      sys.exit(1)
+class Fetcher:
+   def __init__(self, artist, album, size, path, autocorrect):
+      self.size = size
+      self.path = path
+      self.payload = { 'api_key': key, 'artist': artist, 'album': album,
+            'autocorrect': int(autocorrect), 'format': 'json' }
 
-   data = r.json()
-   images = None
-   url = None
-
-   try:
-      data['album']
-   except KeyError:
-      print "This album doesn't seem to have a Last.fm page."
-      sys.exit(1)
-
-   try:
-      images = data['album']['image']
-   except KeyError:
-      print "This album doesn't seem to have art on Last.fm."
-      sys.exit(1)
-
-   try:
-      url = images[size - 1]['#text']
-   except KeyError:
+   def find_album(self):
       try:
-         url = images[size - 2]['#text']
+         r = requests.get(api + '/2.0/?method=album.getinfo', params=self.payload)
+      except (requests.ConnectionError, requests.Timeout) as e:
+         raise ArtgetError("There was an error making a request to Last.fm: %s" %
+               e)
+
+      albuminfo = r.json()
+
+      try:
+         albuminfo['album']
       except KeyError:
-         print "No album art of size " + size + " or " + size - 1 + "."
-         sys.exit(1)
+         raise ArtgetError("This album doesn't seem to exist on Last.fm")
+      self.albuminfo = albuminfo['album']
 
-   if url == '':
-      print "This album doesn't seem to have art on Last.fm."
-      sys.exit(1)
+   def find_image(self):
+      try:
+         self.albuminfo
+      except NameError:
+         raise ArtgetError("The album hasn't been found yet.")
+      try:
+         images = self.albuminfo['image']
+      except KeyError:
+         raise ArtgetError("This album doesn't seem to have album art on Last.fm")
 
-   try:
-      r = requests.get(url)
-   except (requests.exceptions.ConnectionError,
-         requests.exceptions.HTTPError,
-         requests.exceptions.Timeout):
-      print "There was an error retrieving album art from Last.fm."
-   return r.content
+      count = len(images)
 
-def download_art(image, path):
-   try:
-      with open(path, 'wb') as fd:
-         fd.write(image)
-   except IOError:
-      print "Couldn't save to file: " + path
-      sys.exit(1)
+      if count == 0:
+         raise ArtgetError("This album doesn't seem to have album art on Last.fm")
 
-if __name__ == '__main__':
+      # Take nearest item the list. Not every album may have images of all sizes
+      i = min(range(1, count + 1), key=lambda x: abs(x - self.size))
+
+      # This is the URL.
+      self.url = images[i - 1]['#text']
+
+   def download_image(self):
+      try:
+         with open(self.path, 'wb') as fd:
+            try:
+               r = requests.get(self.url, stream = True)
+            except (requests.ConnectionError, requests.Timeout) as e:
+               raise ArtgetError("There was an error downloading the album art: %s" %
+                     e)
+            for block in r.iter_content(1024):
+               if not block:
+                  break
+               fd.write(block)
+      except IOError as err:
+         errno, errstr = err
+         raise ArtgetError("Could not write to file: %s" % errstr)
+
+   def procedure(self):
+      self.find_album()
+      self.find_image()
+      self.download_image()
+
+class MPDConnection:
+   def __init__(self, hostname, port, password=None, use_unicode=True):
+      self.hostname = hostname
+      self.port = port
+      self.password = password
+      self.use_unicode = use_unicode
+      self.client = MPDClient(use_unicode)
+
+   def connect(self):
+      try:
+         self.client.connect(self.hostname, self.port)
+      except IOError as err:
+         errno, errstr = err
+         raise ArtgetError("Could not connect to '%s' : %s" %
+               (self.hostname, errstr))
+      except MPDError as e:
+         raise ArtgetError("Could not connect to '%s' : %s" %
+               (self.hostname, e))
+      if self.password:
+         try:
+            self.client.password(self.password)
+         except CommandError as e:
+            raise ArtgetError("Could not connect to '%s' : "
+                  "password command failed: %s" %
+                  (self.hostname, e))
+         except (MPDError, IOError) as e:
+            raise ArtgetError("Could not connect to '%s' : "
+                  "password command failed: %s" %
+                  (self.hostname, e))
+   
+   def disconnect(self):
+      try:
+         self.client.close()
+      except (MPDError, IOError):
+         # Don't worry, just ignore it, disconnect
+         pass
+      try:
+         self.client.disconnect()
+      except (MPDError, IOError):
+         # Now this is serious. This should never happen.
+         # The client object should not be trusted to be re-used.
+         self.client = MPDClient(self.use_unicode)
+
+   def current_song(self):
+      try:
+         song = self.client.currentsong()
+      except (MPDError, IOError):
+         # Try reconnecting and retrying
+         self.disconnect()
+         try:
+            self.connect()
+         except ArtgetError as e:
+            raise ArtgetError("Reconnecting failed: %s" % e)
+         try:
+            song = self.client.currentsong()
+         except (MPDError, IOError) as e:
+            # Failed again, just give up.
+            raise ArtgetError("Couldn't retrieve current song: %s" % e)
+      if song == {}:
+         raise ArtgetError("No song is playing on MPD")
+      self.song = song
+
+   def procedure(self):
+      self.connect()
+      self.current_song()
+      self.disconnect()
+
+def parse_args():
    parser = argparse.ArgumentParser(prog='artget',
          description='Fetch album arts from Last.fm, has MPD support.',
          epilog='If --artist and --album are specified, it will take'
-            ' priority over the currently playing song.')
-   parser.add_argument('-s', '--size', type=int, default=3,
-         help='between 1 and 5, pick size for image file (3)')
+            ' priority over the currently playing song.',
+         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+   parser.add_argument('-s', '--size', type=int, choices=range(1,6), default=3,
+         help='between 1 and 5, pick size for image file')
    parser.add_argument('-o', '--output', type=str, default='cover.jpg',
          help='filename to save the downloaded album art')
    parser.add_argument('-a', '--artist', type=str, help='Look for this artist',
-         default='')
-   parser.add_argument('-b', '--album', type=str, help='Look for this album', default='')
+         default=None)
+   parser.add_argument('-b', '--album', type=str, help='Look for this album',
+         default=None)
    parser.add_argument('-n', '--hostname', type=str, default='localhost',
-         help='specify hostname for the MPD server (localhost)')
+         help='specify hostname for the MPD server')
    parser.add_argument('-p', '--port', type=int, default=6600,
-         help='specify port for the MPD server (6600)')
+         help='specify port for the MPD server')
+   parser.add_argument('-P', '--password', type=str, default=None,
+         help='specify password for the MPD server')
    parser.add_argument('-r', '--root', type=str, default="~/music/",
-         help='MPD music directory (useful with --to-music-dir')
+         help='MPD music directory (useful with --to-music-dir)')
    parser.add_argument('-N', '--no-autocorrect', action='store_false', dest='autocorrect',
          help='do not use autocorrect by Last.fm')
    parser.add_argument('-A', '--album-artist', action='store_true', dest='albumartist',
@@ -124,46 +196,56 @@ if __name__ == '__main__':
    parser.add_argument('-t', '--to-music-dir', action='store_true', dest='tomusicdir',
          help='save album art to the music directory (only if it exists)')
    args = parser.parse_args()
-   
-   client = mpd.MPDClient(use_unicode=True)
-   try:
-      client.connect(args.hostname, args.port)
-   except:
-      print "Could not connect to the MPD server."
-      sys.exit(1)
+   return args
 
-   artist, album, songdir = (None, None, None)
-   output = args.output # output is to be changed soon
+def main():
+   args = parse_args()
 
-   if args.artist != '':
-      if args.album == '':
-         print "If you specify --artist, you must also specify --album!"
-         sys.exit(1)
-      else:
-         artist = args.artist
-         album = args.album
-         if args.tomusicdir:
-            output = os.path.join(os.path.expanduser(args.root),
-                  artist, album, args.output)
-   if args.album != '':
-      if args.artist == '':
-         print "If you specify --album, you must also specify --artist!"
-         sys.exit(1)
-      else:
-         artist = args.artist
-         album = args.album
-   if args.artist == '' and args.album == '':
-      song = client.currentsong()
-      if song == {}:
-         print "No song is playing at the moment."
-         sys.exit(1)
-      artist = song['artist']
+   # Check if both --artist and --album exists
+   if (args.artist and not args.album) or (args.album and not args.artist):
+      raise ArtgetError("Both artist and album must be specified")
+
+   # Grab from command-line args
+   if (args.artist and args.album):
+      artist = args.artist
+      album = args.album
+      # Assume the ideal organisation of the music directory and place the
+      # downloaded art there. This is especially useful for people who use
+      # the awesome piece of software called beets.
+      if args.tomusicdir:
+         output = os.path.join(os.path.expanduser(args.root),
+               artist, album, args.output)
+   else:
+      # Grab from MPD
+      client = MPDConnection(args.hostname, args.port, args.password, True)
+      client.procedure()
+
+      artist = client.song['artist']
       if args.albumartist:
-         artist = song['artist']
-      album = song['album']
+         artist = client.song['albumartist']
+
+      album = client.song['album']
+
+      # Locate the song playing on MPD and write to there
       if args.tomusicdir:
          output = os.path.join(os.path.expanduser(args.root),
                os.path.dirname(song['file']), args.output)
 
-   image = fetch_art(artist, album, args.size, args.autocorrect)
-   download_art(image, output)
+   if any([a == '' for a in [album, artist]]):
+         raise ArtgetError("Artist or album could not be determined.")
+
+   # Do the work, and bail out. :)
+   fetcher = Fetcher(artist, album, args.size, output, args.autocorrect)
+   fetcher.procedure()
+
+if __name__ == '__main__':
+   try:
+      main()
+   except ArtgetError as e:
+      sys.stderr.write("Error: %s\n" % e)
+      sys.exit(1)
+   except Exception as e:
+      sys.stderr.write("Unexpected exception: %s\n" % e)
+      sys.exit(1)
+   except:
+      sys.exit(0)

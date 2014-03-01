@@ -77,7 +77,11 @@ class Fetcher:
       i = min(range(1, count + 1), key=lambda x: abs(x - self.size))
 
       # This is the URL.
-      self.url = images[i - 1]['#text']
+      url = images[i - 1]['#text']
+
+      if url == '':
+         raise ArtgetError("This album doesn't seem to have album art on Last.fm")
+      self.url = url
 
    def download_image(self):
       try:
@@ -200,6 +204,9 @@ def parse_args():
 
 def main():
    args = parse_args()
+
+   # This is to be played around with.
+   output = None
 
    # Check if both --artist and --album exists
    if (args.artist and not args.album) or (args.album and not args.artist):

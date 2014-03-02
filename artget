@@ -206,7 +206,7 @@ def main():
    args = parse_args()
 
    # This is to be played around with.
-   output = None
+   output = args.output
 
    # Check if both --artist and --album exists
    if (args.artist and not args.album) or (args.album and not args.artist):

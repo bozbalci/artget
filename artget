@@ -63,11 +63,8 @@ class Fetcher:
          self.albuminfo
       except NameError:
          raise ArtgetError("The album hasn't been found yet.")
-      try:
-         images = self.albuminfo['image']
-      except KeyError:
-         raise ArtgetError("This album doesn't seem to have album art on Last.fm")
 
+      images = self.albuminfo['image']
       count = len(images)
 
       if count == 0:

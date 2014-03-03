@@ -5,6 +5,11 @@ artbeet
 
 It will grab the album art for the current album being imported by beets. Since the fetchart plugin hasn't been able to grab the artwork for most of the albums in my library, I wrote this plugin to make my life easier. Hope this helps you, too.
 
+Installation
+============
+
+Put the file `artbeet.py` into your beet plugins directory.
+
 Requirements
 ============
 * Tested on Python 2.7.6

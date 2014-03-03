@@ -194,7 +194,8 @@ def parse_args():
    parser.add_argument('-t', action='store_true', dest='tomusicdir',
          help='save album art to the music directory')
 
-   parser.set_defaults(size=3, output='cover.jpg', host='localhost', port=6600)
+   parser.set_defaults(size=3, output='cover.jpg', host='localhost', port=6600,
+         root='~/music/')
    args = parser.parse_args()
    return args
 
@@ -239,7 +240,7 @@ def main():
       # Locate the song playing on MPD and write to there
       if args.tomusicdir:
          output = os.path.join(os.path.expanduser(args.root),
-               os.path.dirname(song['file']), args.output)
+               os.path.dirname(client.song['file']), args.output)
 
    if any([a == '' for a in [album, artist]]):
          raise ArtgetError("Artist or album could not be determined.")

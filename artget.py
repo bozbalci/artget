@@ -31,6 +31,7 @@ import argparse
 from mpd import MPDClient, MPDError, CommandError
 import requests
 
+VERSION = (0, 1, 0)
 API_URL = "http://ws.audioscrobbler.com"
 API_KEY = "a76e4f3f6a9e81f45a943509437a125f"
 

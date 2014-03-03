@@ -32,6 +32,8 @@ Usage
     
     If -a and -b are specified, they will take priority over MPD.
 
+See the beetsplug directory for [beets](https://github.com/sampsyo/beets) plugin.
+
 Examples
 ========
 

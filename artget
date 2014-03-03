@@ -27,7 +27,6 @@
 import sys
 import os
 import argparse
-import ConfigParser
 
 from mpd import MPDClient, MPDError, CommandError
 import requests

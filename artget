@@ -24,14 +24,16 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from mpd import MPDClient, MPDError, CommandError
-import requests
-import argparse
 import sys
 import os
+import argparse
+import ConfigParser
 
-api = "http://ws.audioscrobbler.com"
-key = "a76e4f3f6a9e81f45a943509437a125f"
+from mpd import MPDClient, MPDError, CommandError
+import requests
+
+API_URL = "http://ws.audioscrobbler.com"
+API_KEY = "a76e4f3f6a9e81f45a943509437a125f"
 
 class ArtgetError(Exception):
    """ Fatal error in artget. """
@@ -40,12 +42,12 @@ class Fetcher:
    def __init__(self, artist, album, size, path, autocorrect):
       self.size = size
       self.path = path
-      self.payload = { 'api_key': key, 'artist': artist, 'album': album,
+      self.payload = { 'api_key': API_KEY, 'artist': artist, 'album': album,
             'autocorrect': int(autocorrect), 'format': 'json' }
 
    def find_album(self):
       try:
-         r = requests.get(api + '/2.0/?method=album.getinfo', params=self.payload)
+         r = requests.get(API_URL + '/2.0/?method=album.getinfo', params=self.payload)
       except (requests.ConnectionError, requests.Timeout) as e:
          raise ArtgetError("There was an error making a request to Last.fm: %s" %
                e)
@@ -102,8 +104,8 @@ class Fetcher:
       self.download_image()
 
 class MPDConnection:
-   def __init__(self, hostname, port, password=None, use_unicode=True):
-      self.hostname = hostname
+   def __init__(self, host, port, password=None, use_unicode=True):
+      self.host = host
       self.port = port
       self.password = password
       self.use_unicode = use_unicode
@@ -111,25 +113,25 @@ class MPDConnection:
 
    def connect(self):
       try:
-         self.client.connect(self.hostname, self.port)
+         self.client.connect(self.host, self.port)
       except IOError as err:
          errno, errstr = err
          raise ArtgetError("Could not connect to '%s' : %s" %
-               (self.hostname, errstr))
+               (self.host, errstr))
       except MPDError as e:
          raise ArtgetError("Could not connect to '%s' : %s" %
-               (self.hostname, e))
+               (self.host, e))
       if self.password:
          try:
             self.client.password(self.password)
          except CommandError as e:
             raise ArtgetError("Could not connect to '%s' : "
                   "password command failed: %s" %
-                  (self.hostname, e))
+                  (self.host, e))
          except (MPDError, IOError) as e:
             raise ArtgetError("Could not connect to '%s' : "
                   "password command failed: %s" %
-                  (self.hostname, e))
+                  (self.host, e))
    
    def disconnect(self):
       try:
@@ -171,37 +173,34 @@ class MPDConnection:
 def parse_args():
    parser = argparse.ArgumentParser(prog='artget',
          description='Fetch album arts from Last.fm, has MPD support.',
-         epilog='If --artist and --album are specified, it will take'
-            ' priority over the currently playing song.',
-         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-   parser.add_argument('-s', '--size', type=int, choices=range(1,6), default=3,
-         help='between 1 and 5, pick size for image file')
-   parser.add_argument('-o', '--output', type=str, default='cover.jpg',
-         help='filename to save the downloaded album art')
-   parser.add_argument('-a', '--artist', type=str, help='Look for this artist',
-         default=None)
-   parser.add_argument('-b', '--album', type=str, help='Look for this album',
-         default=None)
-   parser.add_argument('-n', '--hostname', type=str, default='localhost',
-         help='specify hostname for the MPD server')
-   parser.add_argument('-p', '--port', type=int, default=6600,
-         help='specify port for the MPD server')
-   parser.add_argument('-P', '--password', type=str, default=None,
-         help='specify password for the MPD server')
-   parser.add_argument('-r', '--root', type=str, default="~/music/",
-         help='MPD music directory (useful with --to-music-dir)')
-   parser.add_argument('-N', '--no-autocorrect', action='store_false', dest='autocorrect',
+         epilog='If -a and -b are specified, they will take priority over MPD.',
+         usage='%(prog)s [options]')
+
+   parser.add_argument('-s', type=int, choices=range(1,6), dest='size',
+         help='size for album art')
+   parser.add_argument('-o', type=str, dest='output',
+         help='filename to save the album art')
+   parser.add_argument('-N', action='store_false', dest='autocorrect',
          help='do not use autocorrect by Last.fm')
-   parser.add_argument('-A', '--album-artist', action='store_true', dest='albumartist',
+   parser.add_argument('-a', type=str, dest='artist', help='look for this artist')
+   parser.add_argument('-b', type=str, dest='album', help='look for this album')
+   parser.add_argument('-n', type=str, dest='host', help='MPD host')
+   parser.add_argument('-p', type=int, dest='port', help='MPD port')
+   parser.add_argument('-P', type=str, dest='password', help='MPD password')
+   parser.add_argument('-r', type=str, dest='root',
+         help='MPD music directory (useful with -t)')
+   parser.add_argument('-A', action='store_true', dest='albumartist',
          help='prefer albumartist tag on the current playing album')
-   parser.add_argument('-t', '--to-music-dir', action='store_true', dest='tomusicdir',
-         help='save album art to the music directory (only if it exists)')
+   parser.add_argument('-t', action='store_true', dest='tomusicdir',
+         help='save album art to the music directory')
+
+   parser.set_defaults(size=3, output='cover.jpg', host='localhost', port=6600)
    args = parser.parse_args()
    return args
 
 def main():
    args = parse_args()
-
+   
    # This is to be played around with.
    output = args.output
 
@@ -213,15 +212,22 @@ def main():
    if (args.artist and args.album):
       artist = args.artist
       album = args.album
+
       # Assume the ideal organisation of the music directory and place the
       # downloaded art there. This is especially useful for people who use
       # the awesome piece of software called beets.
       if args.tomusicdir:
-         output = os.path.join(os.path.expanduser(args.root),
-               artist, album, args.output)
+         # I removed this feature because it isn't useful for most people, and there
+         # is a really high probability of missing the correct directory (album titles
+         # start with a dot, accented characters aren't in the name, etc.) You may
+         # re-enable it back, but I wouldn't recommend this.
+
+         # output = os.path.join(os.path.expanduser(args.root),
+         #       artist, album, args.output)
+         raise ArtgetError("-t cannot be used together with -a and -b.")
    else:
       # Grab from MPD
-      client = MPDConnection(args.hostname, args.port, args.password, True)
+      client = MPDConnection(args.host, args.port, args.password, True)
       client.procedure()
 
       artist = client.song['artist']

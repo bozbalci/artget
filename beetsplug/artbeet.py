@@ -36,10 +36,12 @@ class ArtbeetPlugin(BeetsPlugin):
 def Procedure(artist, album, size, filename, autocorrect):
    fetcher = artget.Fetcher(artist, album, size, filename, autocorrect)
    try:
+      print "Grabbing album art..."
       fetcher.procedure()
    except artget.ArtgetError as e:
       sys.stderr.write("Artget error: %s\n" % e)
       sys.exit(1)
+   print "Successfully grabbed album art."
 
 @ArtbeetPlugin.listen('album_imported')
 def imported(lib=None, album=None):

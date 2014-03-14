@@ -109,9 +109,15 @@ class MPDConnection:
       self.port = port
       self.password = password
       self.use_unicode = use_unicode
+      self.connected = False
       self.client = MPDClient(use_unicode)
 
    def connect(self):
+      # If already connected, just reconnect
+      if self.connected:
+         self.disconnect()
+         self.connect()
+
       try:
          self.client.connect(self.host, self.port)
       except IOError as err:
@@ -132,8 +138,14 @@ class MPDConnection:
             raise ArtgetError("Could not connect to '%s' : "
                   "password command failed: %s" %
                   (self.host, e))
+
+      self.connected = True
    
    def disconnect(self):
+      # Don't go further if there's no connection
+      if not self.connected:
+         return
+
       try:
          self.client.close()
       except (MPDError, IOError):
@@ -145,6 +157,8 @@ class MPDConnection:
          # Now this is serious. This should never happen.
          # The client object should not be trusted to be re-used.
          self.client = MPDClient(self.use_unicode)
+
+      self.connected = False
 
    def current_song(self):
       try:

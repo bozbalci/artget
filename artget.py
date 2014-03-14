@@ -208,14 +208,14 @@ def parse_args():
    parser.add_argument('-t', action='store_true', dest='tomusicdir',
          help='save album art to the music directory')
 
-   parser.set_defaults(size=3, output='cover.jpg', host='localhost', port=6600,
+   parser.set_defaults(size=4, output='cover.jpg', host='localhost', port=6600,
          root='~/music/')
    args = parser.parse_args()
    return args
 
 def main():
    args = parse_args()
-   
+
    # This is to be played around with.
    output = args.output
 
@@ -259,7 +259,10 @@ def main():
    if any([a == '' for a in [album, artist]]):
          raise ArtgetError("Artist or album could not be determined.")
 
-   # Do the work, and bail out. :)
+   # Do the work, and bail out. :) Here's a nice easter egg, as well.
+   if artist == 'King Crimson':
+      raise ArtgetError("Robert Fripp doesn't want you to download this album art.")
+
    fetcher = Fetcher(artist, album, args.size, output, args.autocorrect)
    fetcher.procedure()
 
